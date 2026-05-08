@@ -2,6 +2,11 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+
+// Render требует HTTP-сервер на PORT
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => res.end('OK')).listen(PORT);
 
 const { COMPANY, PRODUCTS, FAQ, QUALIFICATION, getRecommendation } = require('./data');
 const kb = require('./keyboards');
