@@ -1,0 +1,14 @@
+{
+  "name": "celatus-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for Celatus — slot diffusers | celatus.uz",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "node-telegram-bot-api": "^0.64.0"
+  }
+}
