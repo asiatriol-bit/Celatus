@@ -5,7 +5,7 @@ const fs = require('fs');
 const http = require('http');
 
 const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => res.end('OK')).listen(PORT);
+const WEBHOOK_URL = process.env.WEBHOOK_URL; // e.g. https://celatus-bot.onrender.com
 
 const { COMPANY, PRODUCTS, FAQ, QUALIFICATION, getRecommendation } = require('./data');
 const kb = require('./keyboards');
@@ -18,7 +18,16 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-const bot = new TelegramBot(TOKEN, { polling: true });
+let bot;
+if (WEBHOOK_URL) {
+  // Webhook mode: Telegram pushes updates to us — no 409 conflicts on redeploy
+  bot = new TelegramBot(TOKEN, {
+    webHook: { port: PORT, healthEndpoint: '/' },
+  });
+  bot.setWebHook(`${WEBHOOK_URL}/bot${TOKEN}`);
+} else {
+  bot = new TelegramBot(TOKEN, { polling: true });
+}
 
 // chatId → { step, role, projectType, slotChoice, length, name, phone, product }
 const sessions = new Map();
@@ -341,15 +350,6 @@ bot.on('message', async (msg) => {
 
 bot.on('polling_error', (err) => {
   console.error('Polling error:', err.code, err.message);
-});
-
-// Graceful shutdown: останавливаем polling до завершения процесса
-// чтобы избежать 409 Conflict при деплое на Render
-process.on('SIGTERM', () => {
-  bot.stopPolling().then(() => process.exit(0));
-});
-process.on('SIGINT', () => {
-  bot.stopPolling().then(() => process.exit(0));
 });
 
 console.log(`
