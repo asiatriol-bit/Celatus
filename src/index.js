@@ -23,7 +23,7 @@ const WEBHOOK_PATH = `/bot${TOKEN}`;
 let bot;
 if (WEBHOOK_URL) {
   // Webhook mode: manual HTTP server to avoid library conflicts on Render
-  bot = new TelegramBot(TOKEN, { polling: false });
+  bot = new TelegramBot(TOKEN, {});
 
   const server = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url === WEBHOOK_PATH) {
