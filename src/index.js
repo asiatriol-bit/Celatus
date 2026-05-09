@@ -40,10 +40,22 @@ if (WEBHOOK_URL) {
     }
   });
 
+  const webhookTarget = `${WEBHOOK_URL}${WEBHOOK_PATH}`;
+
+  function ensureWebhook() {
+    bot.getWebHookInfo().then(info => {
+      if (info.url !== webhookTarget) {
+        bot.setWebHook(webhookTarget)
+          .then(() => console.log(`✅ Webhook set: ${webhookTarget}`))
+          .catch(e => console.error('❌ Webhook error:', e.message));
+      }
+    }).catch(() => {});
+  }
+
   server.listen(PORT, () => {
-    bot.setWebHook(`${WEBHOOK_URL}${WEBHOOK_PATH}`)
-      .then(() => console.log(`✅ Webhook set: ${WEBHOOK_URL}${WEBHOOK_PATH}`))
-      .catch(e => console.error('❌ Webhook error:', e.message));
+    ensureWebhook();
+    // Re-check every 20s in case old polling instance deleted the webhook
+    setInterval(ensureWebhook, 20000);
   });
 } else {
   bot = new TelegramBot(TOKEN, { polling: true });
