@@ -4,7 +4,6 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 
-// Render требует HTTP-сервер на PORT
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => res.end('OK')).listen(PORT);
 
@@ -342,6 +341,15 @@ bot.on('message', async (msg) => {
 
 bot.on('polling_error', (err) => {
   console.error('Polling error:', err.code, err.message);
+});
+
+// Graceful shutdown: останавливаем polling до завершения процесса
+// чтобы избежать 409 Conflict при деплое на Render
+process.on('SIGTERM', () => {
+  bot.stopPolling().then(() => process.exit(0));
+});
+process.on('SIGINT', () => {
+  bot.stopPolling().then(() => process.exit(0));
 });
 
 console.log(`
