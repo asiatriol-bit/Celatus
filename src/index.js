@@ -190,10 +190,3 @@ server.listen(PORT, () => {
   setInterval(ensureWebhook, 20000);
 });
 
-// DEBUG: show loaded data
-if (req.url === '/debug') {
-  const {PRODUCTS} = require('./data');
-  res.writeHead(200, {'Content-Type': 'application/json'});
-  res.end(JSON.stringify(PRODUCTS.map(p => ({id:p.id, airflow:p.airflow}))));
-  return;
-}
