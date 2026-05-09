@@ -18,15 +18,36 @@ if (!TOKEN) {
   process.exit(1);
 }
 
+const WEBHOOK_PATH = `/bot${TOKEN}`;
+
 let bot;
 if (WEBHOOK_URL) {
-  // Webhook mode: Telegram pushes updates to us — no 409 conflicts on redeploy
-  bot = new TelegramBot(TOKEN, {
-    webHook: { port: PORT, healthEndpoint: '/' },
+  // Webhook mode: manual HTTP server to avoid library conflicts on Render
+  bot = new TelegramBot(TOKEN, { polling: false });
+
+  const server = http.createServer((req, res) => {
+    if (req.method === 'POST' && req.url === WEBHOOK_PATH) {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        try { bot.processUpdate(JSON.parse(body)); } catch (e) {}
+        res.writeHead(200);
+        res.end('OK');
+      });
+    } else {
+      res.writeHead(200);
+      res.end('OK');
+    }
   });
-  bot.setWebHook(`${WEBHOOK_URL}/bot${TOKEN}`);
+
+  server.listen(PORT, () => {
+    bot.setWebHook(`${WEBHOOK_URL}${WEBHOOK_PATH}`)
+      .then(() => console.log(`✅ Webhook set: ${WEBHOOK_URL}${WEBHOOK_PATH}`))
+      .catch(e => console.error('❌ Webhook error:', e.message));
+  });
 } else {
   bot = new TelegramBot(TOKEN, { polling: true });
+  http.createServer((req, res) => res.end('OK')).listen(PORT);
 }
 
 // chatId → { step, role, projectType, slotChoice, length, name, phone, product }
