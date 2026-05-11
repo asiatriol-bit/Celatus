@@ -172,21 +172,29 @@ const server = http.createServer((req, res) => {
   }
 });
 
-const webhookTarget = `${WEBHOOK_URL}${WEBHOOK_PATH}`;
+const webhookTarget = WEBHOOK_URL ? `${WEBHOOK_URL}${WEBHOOK_PATH}` : null;
 
-function ensureWebhook() {
-  bot.getWebhookInfo().then(info => {
-    if (info.url !== webhookTarget) {
-      bot.setWebhook(webhookTarget)
-        .then(() => console.log(`✅ Webhook set: ${webhookTarget}`))
-        .catch(e => console.error('❌ Webhook error:', e.message));
-    }
-  }).catch(() => {});
+function setWebhook() {
+  if (!webhookTarget) return;
+  bot.setWebhook(webhookTarget)
+    .then(() => console.log(`✅ Webhook set: ${webhookTarget}`))
+    .catch(e => console.error('❌ Webhook error:', e.message));
 }
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  ensureWebhook();
-  setInterval(ensureWebhook, 20000);
+  if (webhookTarget) {
+    // Агрессивно переустанавливаем webhook первые 2 минуты (каждые 4с),
+    // чтобы пережить старый экземпляр на Render, который его удаляет
+    let ticks = 0;
+    const fast = setInterval(() => {
+      setWebhook();
+      if (++ticks >= 30) {
+        clearInterval(fast);
+        setInterval(setWebhook, 30000); // потом раз в 30с
+      }
+    }, 4000);
+    setWebhook();
+  }
 });
 
