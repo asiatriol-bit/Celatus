@@ -22,10 +22,6 @@ function getSession(id) { if (!sessions.has(id)) sessions.set(id, {}); return se
 function labelFor(list, id) { const f = list.find(i => i.id === id); return f ? f.label : id; }
 
 async function sendPhoto(chatId, photoFile, caption, options = {}) {
-  const fullPath = path.join(__dirname, '..', photoFile);
-  if (fs.existsSync(fullPath)) {
-    return bot.sendPhoto(chatId, fs.createReadStream(fullPath), { caption, parse_mode: 'Markdown', ...options });
-  }
   return bot.sendMessage(chatId, caption, { parse_mode: 'Markdown', ...options });
 }
 
