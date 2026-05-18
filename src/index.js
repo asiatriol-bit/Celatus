@@ -79,7 +79,7 @@ async function handleMessage(msg) {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '📞 Позвонить', url: `tel:${COMPANY.phone.replace(/\s/g, '')}` },
+            { text: '📞 Контакты и звонок', callback_data: 'contact_manager' },
             { text: '📝 Оставить заявку', callback_data: 'request_general' },
           ],
           [{ text: '🏠 Главное меню', callback_data: 'main_menu' }],
@@ -87,7 +87,7 @@ async function handleMessage(msg) {
       },
     };
 
-    await bot.sendMessage(chatId, botResponse, { parse_mode: 'Markdown', ...contactKeyboard });
+    await bot.sendMessage(chatId, botResponse, { ...contactKeyboard });
     return;
   }
 
