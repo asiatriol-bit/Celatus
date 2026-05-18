@@ -126,7 +126,7 @@ async function processMessage(userId, userMessage) {
         { role: 'system', content: getSystemPrompt() },
         ...session.messages,
       ],
-      model: 'mixtral-8x7b-32768',
+      model: 'llama-3.1-70b-versatile',
       max_tokens: 500,
       temperature: 0.7,
     });
