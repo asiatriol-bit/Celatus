@@ -6,9 +6,14 @@ let systemPromptCache = null;
 
 function initializeClient() {
   if (!client && process.env.GROQ_API_KEY) {
-    client = new Groq({
-      apiKey: process.env.GROQ_API_KEY,
-    });
+    try {
+      client = new Groq({
+        apiKey: process.env.GROQ_API_KEY,
+      });
+      console.log('✅ Groq client initialized successfully');
+    } catch (e) {
+      console.error('❌ Failed to initialize Groq client:', e.message);
+    }
   }
   return client;
 }
@@ -23,8 +28,9 @@ function flattenFAQ() {
         faqText += `Q: ${item.question}\nA: ${item.answer}\n\n`;
       });
     }
+    console.log('✅ FAQ flattened successfully');
   } catch (e) {
-    console.error('Error flattening FAQ:', e.message);
+    console.error('❌ Error flattening FAQ:', e.message);
   }
   return faqText;
 }
@@ -86,9 +92,9 @@ function getOrCreateSession(userId) {
       userInfo: {
         name: null,
         phone: null,
-        type: null, // 'client' | 'partner'
-        isPartner: null, // true | false
-        role: null, // 'designer' | 'architect' | 'hvac' | 'builder' | 'private'
+        type: null,
+        isPartner: null,
+        role: null,
       },
     });
   }
@@ -96,19 +102,21 @@ function getOrCreateSession(userId) {
 }
 
 async function processMessage(userId, userMessage) {
+  console.log(`\n🔵 Processing message from user ${userId}: "${userMessage}"`);
+  
   const groqClient = initializeClient();
   
   if (!groqClient) {
-    console.error('Groq client not initialized. GROQ_API_KEY missing?');
+    console.error('❌ Groq client not initialized. GROQ_API_KEY missing?');
+    console.error('GROQ_API_KEY value:', process.env.GROQ_API_KEY ? '***SET***' : 'NOT SET');
     return {
-      message: '❌ Ошибка: API не настроен. Пожалуйста, позвоните нам.',
+      message: '❌ Ошибка: API не настроен. Проверьте GROQ_API_KEY на Render.',
       session: {},
     };
   }
 
   const session = getOrCreateSession(userId);
   
-  // Keep only last 2 user messages + 2 assistant messages (4 messages max)
   if (session.messages.length >= 4) {
     session.messages = session.messages.slice(-3);
   }
@@ -119,7 +127,9 @@ async function processMessage(userId, userMessage) {
   });
 
   try {
-    console.log(`Processing message for user ${userId}...`);
+    console.log(`📤 Sending request to Groq with model: llama-3.1-70b-versatile`);
+    console.log(`📝 System prompt length: ${getSystemPrompt().length} chars`);
+    console.log(`💬 Messages in context: ${session.messages.length}`);
     
     const response = await groqClient.chat.completions.create({
       messages: [
@@ -131,14 +141,16 @@ async function processMessage(userId, userMessage) {
       temperature: 0.7,
     });
 
+    console.log(`✅ Groq response received`);
+    
     const assistantMessage = response.choices[0].message.content;
+    console.log(`📥 Response: ${assistantMessage.substring(0, 100)}...`);
     
     session.messages.push({
       role: 'assistant',
       content: assistantMessage,
     });
 
-    // Extract user info from conversation (simple heuristics)
     extractUserInfo(session, userMessage);
 
     return {
@@ -146,19 +158,26 @@ async function processMessage(userId, userMessage) {
       session: session.userInfo,
     };
   } catch (error) {
-    console.error('Groq error:', error);
+    console.error('\n❌ GROQ ERROR DETAILS:');
+    console.error('Error type:', error.constructor.name);
+    console.error('Error message:', error.message);
+    console.error('Error status:', error.status);
+    console.error('Error code:', error.code);
+    if (error.response) {
+      console.error('Error response:', JSON.stringify(error.response, null, 2));
+    }
+    console.error('Full error:', error);
+    
     return {
-      message: '❌ Ошибка при обработке запроса. Пожалуйста, попробуйте еще раз или позвоните нам: +998 91 007-15-28',
+      message: `❌ Ошибка Groq: ${error.message}. Позвоните нам: +998 91 007-15-28`,
       session: session.userInfo,
     };
   }
 }
 
 function extractUserInfo(session, userMessage) {
-  // Simple extraction (can be improved with regex)
   const lowerMsg = userMessage.toLowerCase();
   
-  // Detect client type
   if (lowerMsg.includes('партнер') || lowerMsg.includes('сотрудничество') || lowerMsg.includes('дистрибьютор')) {
     session.userInfo.isPartner = true;
     session.userInfo.type = 'partner';
@@ -167,7 +186,6 @@ function extractUserInfo(session, userMessage) {
     session.userInfo.type = 'client';
   }
 
-  // Detect role
   if (lowerMsg.includes('дизайнер')) session.userInfo.role = 'designer';
   else if (lowerMsg.includes('архитектор')) session.userInfo.role = 'architect';
   else if (lowerMsg.includes('hvac') || lowerMsg.includes('инженер')) session.userInfo.role = 'hvac';
