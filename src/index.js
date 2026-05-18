@@ -70,6 +70,11 @@ async function handleMessage(msg) {
   const text = msg.text.trim();
   const session = getSession(userId);
 
+  // Форма заявки имеет приоритет над чат-режимом
+  if (session.step === 'ask_name' || session.step === 'ask_phone') {
+    session.inChatMode = false;
+  }
+
   // Check if user is in chat mode
   if (session.inChatMode) {
     const { message: botResponse, session: userInfo } = await processMessage(userId, text);
@@ -79,7 +84,7 @@ async function handleMessage(msg) {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '📞 Контакты и звонок', callback_data: 'contact_manager' },
+            { text: '💬 Написать менеджеру', url: 'https://t.me/Celatus_uz' },
             { text: '📝 Оставить заявку', callback_data: 'request_general' },
           ],
           [{ text: '🏠 Главное меню', callback_data: 'main_menu' }],
@@ -190,8 +195,11 @@ async function handleCallback(query) {
   }
 
   if (data.startsWith('request_')) {
-    const session = getSession(userId); session.step = 'ask_name'; session.requestProduct = data.replace('request_', '');
-    return bot.sendMessage(chatId, `📝 *Запрос расчёта стоимости*\n\nВведите ваше имя:`, { parse_mode: 'Markdown', ...kb.cancelKeyboard });
+    const session = getSession(userId);
+    session.inChatMode = false;
+    session.step = 'ask_name';
+    session.requestProduct = data.replace('request_', '');
+    return bot.sendMessage(chatId, `📝 *Оставить заявку*\n\nВведите ваше имя:`, { parse_mode: 'Markdown', ...kb.cancelKeyboard });
   }
 
   if (data === 'catalog') {
@@ -215,8 +223,12 @@ async function handleCallback(query) {
 
   if (data === 'contact_manager') {
     return bot.sendMessage(chatId,
-      `📞 *Контакты Celatus*\n\n📱 Телефон: ${COMPANY.phone}\n💬 Telegram: ${COMPANY.telegram}\n🌐 Сайт: ${COMPANY.website}\n📍 ${COMPANY.address}\n🕐 ${COMPANY.workingHours}\n\nИли оставьте заявку — мы перезвоним:`,
-      { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '📝 Оставить заявку', callback_data: 'request_general' }], [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]] } }
+      `📞 *Связаться с Celatus*\n\nНапишите нам напрямую в Telegram или оставьте заявку — мы перезвоним.\n\n🕐 Работаем: ${COMPANY.workingHours}`,
+      { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [
+        [{ text: '💬 Написать менеджеру', url: 'https://t.me/Celatus_uz' }],
+        [{ text: '📝 Оставить заявку', callback_data: 'request_general' }],
+        [{ text: '🏠 Главное меню', callback_data: 'main_menu' }],
+      ]} }
     );
   }
 }
