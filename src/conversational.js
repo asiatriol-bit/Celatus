@@ -127,16 +127,16 @@ async function processMessage(userId, userMessage) {
   });
 
   try {
-    console.log(`📤 Sending request to Groq with model: llama-3.1-70b-versatile`);
+    console.log(`📤 Sending request to Groq with model: llama-3.3-70b-versatile`);
     console.log(`📝 System prompt length: ${getSystemPrompt().length} chars`);
     console.log(`💬 Messages in context: ${session.messages.length}`);
-    
+
     const response = await groqClient.chat.completions.create({
       messages: [
         { role: 'system', content: getSystemPrompt() },
         ...session.messages,
       ],
-      model: 'llama-3.1-70b-versatile',
+      model: 'llama-3.3-70b-versatile',
       max_tokens: 500,
       temperature: 0.7,
     });
