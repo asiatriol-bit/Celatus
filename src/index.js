@@ -113,6 +113,10 @@ async function handleMessage(msg) {
   if (text === '/start') {
     sessions.delete(userId);
     const name = msg.from.first_name || 'Привет';
+    const coverPath = path.join(__dirname, '..', 'images', 'cover.jpeg');
+    if (fs.existsSync(coverPath)) {
+      await bot.sendPhoto(chatId, coverPath, {});
+    }
     return bot.sendMessage(chatId,
       `👋 *${name}, добро пожаловать в CELATUS!*\n\nМы производим *щелевые диффузоры скрытого монтажа* — единственный производитель в Узбекистане.\n\n🔹 1-, 2-, 3-щелевые модели\n🔹 Непрерывные линии без швов\n🔹 Любой цвет RAL под проект\n🔹 Любимый выбор дизайнеров и архитекторов\n\nСайт: *${COMPANY.website}*`,
       { parse_mode: 'Markdown', ...getMainMenuWithChat() }
