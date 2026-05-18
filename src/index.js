@@ -3,6 +3,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const bot = require('./botcore');
+const { processMessage, clearSession, getSessionInfo } = require('./conversational');
 
 const PORT = process.env.PORT || 3000;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
@@ -21,6 +22,18 @@ function esc(text) { return String(text).replace(/([_*\[\]()~`>#+=|{}.!-])/g, '\
 function getSession(id) { if (!sessions.has(id)) sessions.set(id, {}); return sessions.get(id); }
 function labelFor(list, id) { const f = list.find(i => i.id === id); return f ? f.label : id; }
 
+// Timezone helper for Tashkent (UTC+5)
+function getTashkentHour() {
+  const now = new Date();
+  const tz = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tashkent' }));
+  return tz.getHours();
+}
+
+function isWorkingHours() {
+  const hour = getTashkentHour();
+  return hour >= 9 && hour < 20; // 09:00 - 20:00
+}
+
 async function sendPhoto(chatId, photoFile, caption, options = {}) {
   const fullPath = path.join(__dirname, '..', photoFile);
   if (fs.existsSync(fullPath)) {
@@ -36,6 +49,20 @@ async function showMainMenu(chatId, text) {
   );
 }
 
+// New: Add "Ask a question" mode to keyboard
+function getMainMenuWithChat() {
+  return {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '❓ Задать вопрос', callback_data: 'chat_start' }],
+        [{ text: '📐 Подбор диффузора', callback_data: 'qualify_start' }, { text: '📦 Каталог', callback_data: 'catalog' }],
+        [{ text: '❓ FAQ', callback_data: 'faq_menu' }, { text: '📞 Контакты', callback_data: 'contact_manager' }],
+      ],
+    },
+  };
+}
+
 async function handleMessage(msg) {
   if (!msg || !msg.text) return;
   const chatId = msg.chat.id;
@@ -43,12 +70,52 @@ async function handleMessage(msg) {
   const text = msg.text.trim();
   const session = getSession(userId);
 
+  // Check if user is in chat mode
+  if (session.inChatMode) {
+    // Process with Groq AI
+    const { message: botResponse, session: userInfo } = await processMessage(userId, text);
+    
+    // Store user info
+    session.chatUserInfo = userInfo;
+    
+    // Send response
+    await bot.sendMessage(chatId, botResponse, { parse_mode: 'Markdown' });
+    
+    // Check if user wants to order/consult (keywords)
+    const lowerText = text.toLowerCase();
+    if (lowerText.includes('заказ') || lowerText.includes('расчет') || lowerText.includes('консультац') || lowerText.includes('готов')) {
+      if (isWorkingHours()) {
+        // Working hours: show call button
+        await bot.sendMessage(chatId, 
+          `📞 *Готовы помочь!*\n\nПозвоните нам:\n*${COMPANY.phone}*\n\nИли введите ваш номер для обратного звонка:`,
+          { parse_mode: 'Markdown' }
+        );
+      } else {
+        // Off hours: notify manager via Telegram
+        const hour = getTashkentHour();
+        const timeStr = hour < 9 ? 'утро (9:00+)' : 'завтра утром';
+        
+        if (MANAGER_CHAT_ID && userInfo) {
+          await bot.sendMessage(MANAGER_CHAT_ID,
+            `🌙 ЗАПРОС ВНЕ РАБОЧЕГО ВРЕМЕНИ\n━━━━━━━━━━━━━━━\n👤 Клиент: ${userInfo.name || '—'}\n📱 Номер: ${userInfo.phone || '—'}\n🔗 Telegram: @${msg.from.username || '—'} (id: ${userId})\n━━━━━━━━━━━━━━━\n💬 Запрос: Хочет заказ/консультацию\n⏰ Позвонить: ${timeStr}\n🕐 ${new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' })}`
+          ).catch(e => console.error('Error sending to manager:', e.message));
+        }
+        
+        await bot.sendMessage(chatId,
+          `✅ Спасибо за интерес!\n\nВы написали вне рабочего времени. Мы обработаем ваш запрос завтра утром с 9:00.\n\nНаш номер: *${COMPANY.phone}*`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+    }
+    return;
+  }
+
   if (text === '/start') {
     sessions.delete(userId);
     const name = msg.from.first_name || 'Привет';
     return bot.sendMessage(chatId,
       `👋 *${name}, добро пожаловать в CELATUS!*\n\nМы производим *щелевые диффузоры скрытого монтажа* — единственный производитель в Узбекистане.\n\n🔹 1-, 2-, 3-щелевые модели\n🔹 Непрерывные линии без швов\n🔹 Любой цвет RAL под проект\n🔹 Любимый выбор дизайнеров и архитекторов\n\nСайт: *${COMPANY.website}*`,
-      { parse_mode: 'Markdown', ...kb.mainMenu }
+      { parse_mode: 'Markdown', ...getMainMenuWithChat() }
     );
   }
 
@@ -87,7 +154,22 @@ async function handleCallback(query) {
   const data = query.data;
   await bot.answerCallbackQuery(query.id);
 
-  if (data === 'main_menu') { sessions.delete(userId); return showMainMenu(chatId); }
+  if (data === 'main_menu') { 
+    sessions.delete(userId); 
+    clearSession(userId);
+    return showMainMenu(chatId); 
+  }
+
+  // New: Chat mode handler
+  if (data === 'chat_start') {
+    const session = getSession(userId);
+    session.inChatMode = true;
+    clearSession(userId); // Reset any previous chat
+    return bot.sendMessage(chatId,
+      `💬 *Чат с архитектурным консультантом*\n\nЗадавайте вопросы о наших диффузорах:\n• Какие потолки подходят?\n• Сколько стоит?\n• Как монтируется?\n• Нужна консультация инженера?\n\nПишите в свободной форме 👇`,
+      { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🏠 Главное меню', callback_data: 'main_menu' }]] } }
+    );
+  }
 
   if (data === 'qualify_start') {
     sessions.set(userId, { step: 'role' });
@@ -184,17 +266,14 @@ function setWebhook() {
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   if (webhookTarget) {
-    // Агрессивно переустанавливаем webhook первые 2 минуты (каждые 4с),
-    // чтобы пережить старый экземпляр на Render, который его удаляет
     let ticks = 0;
     const fast = setInterval(() => {
       setWebhook();
       if (++ticks >= 30) {
         clearInterval(fast);
-        setInterval(setWebhook, 30000); // потом раз в 30с
+        setInterval(setWebhook, 30000);
       }
     }, 4000);
     setWebhook();
   }
 });
-
