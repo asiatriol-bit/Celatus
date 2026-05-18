@@ -1,18 +1,30 @@
-const Groq = require('groq-sdk');
+const { Groq } = require('groq-sdk');
 const faqData = require('./faq.json');
 
-const client = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+let client = null;
+let systemPromptCache = null;
+
+function initializeClient() {
+  if (!client && process.env.GROQ_API_KEY) {
+    client = new Groq({
+      apiKey: process.env.GROQ_API_KEY,
+    });
+  }
+  return client;
+}
 
 // Flatten FAQ for context
 function flattenFAQ() {
   let faqText = '';
-  for (const [category, items] of Object.entries(faqData)) {
-    faqText += `\n${category.toUpperCase()}:\n`;
-    items.forEach(item => {
-      faqText += `Q: ${item.question}\nA: ${item.answer}\n\n`;
-    });
+  try {
+    for (const [category, items] of Object.entries(faqData)) {
+      faqText += `\n${category.toUpperCase()}:\n`;
+      items.forEach(item => {
+        faqText += `Q: ${item.question}\nA: ${item.answer}\n\n`;
+      });
+    }
+  } catch (e) {
+    console.error('Error flattening FAQ:', e.message);
   }
   return faqText;
 }
@@ -41,7 +53,9 @@ const COMPANY_INFO = `
 - Сроки: 3-14 дней
 `;
 
-const SYSTEM_PROMPT = `Ты профессиональный архитектурный консультант компании Celatus.
+function getSystemPrompt() {
+  if (!systemPromptCache) {
+    systemPromptCache = `Ты профессиональный архитектурный консультант компании Celatus.
 
 ${COMPANY_INFO}
 
@@ -58,6 +72,9 @@ ${flattenFAQ()}
 6. На вопросы про расчет сложности, проектирование ОВиК - предложи консультацию HVAC-специалиста
 7. Не обещай сроки/цены без уточнений
 8. Помни: ты консультант, не продавец`;
+  }
+  return systemPromptCache;
+}
 
 // Session storage for conversation history
 const conversationHistory = new Map();
@@ -79,6 +96,16 @@ function getOrCreateSession(userId) {
 }
 
 async function processMessage(userId, userMessage) {
+  const groqClient = initializeClient();
+  
+  if (!groqClient) {
+    console.error('Groq client not initialized. GROQ_API_KEY missing?');
+    return {
+      message: '❌ Ошибка: API не настроен. Пожалуйста, позвоните нам.',
+      session: {},
+    };
+  }
+
   const session = getOrCreateSession(userId);
   
   // Keep only last 2 user messages + 2 assistant messages (4 messages max)
@@ -92,9 +119,11 @@ async function processMessage(userId, userMessage) {
   });
 
   try {
-    const response = await client.chat.completions.create({
+    console.log(`Processing message for user ${userId}...`);
+    
+    const response = await groqClient.chat.completions.create({
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: getSystemPrompt() },
         ...session.messages,
       ],
       model: 'mixtral-8x7b-32768',
@@ -117,9 +146,9 @@ async function processMessage(userId, userMessage) {
       session: session.userInfo,
     };
   } catch (error) {
-    console.error('Groq error:', error.message);
+    console.error('Groq error:', error);
     return {
-      message: '❌ Ошибка при обработке запроса. Пожалуйста, попробуйте еще раз или позвоните нам.',
+      message: '❌ Ошибка при обработке запроса. Пожалуйста, попробуйте еще раз или позвоните нам: +998 91 007-15-28',
       session: session.userInfo,
     };
   }
