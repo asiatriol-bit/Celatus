@@ -72,41 +72,22 @@ async function handleMessage(msg) {
 
   // Check if user is in chat mode
   if (session.inChatMode) {
-    // Process with Groq AI
     const { message: botResponse, session: userInfo } = await processMessage(userId, text);
-    
-    // Store user info
     session.chatUserInfo = userInfo;
-    
-    // Send response
-    await bot.sendMessage(chatId, botResponse, { parse_mode: 'Markdown' });
-    
-    // Check if user wants to order/consult (keywords)
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes('заказ') || lowerText.includes('расчет') || lowerText.includes('консультац') || lowerText.includes('готов')) {
-      if (isWorkingHours()) {
-        // Working hours: show call button
-        await bot.sendMessage(chatId, 
-          `📞 *Готовы помочь!*\n\nПозвоните нам:\n*${COMPANY.phone}*\n\nИли введите ваш номер для обратного звонка:`,
-          { parse_mode: 'Markdown' }
-        );
-      } else {
-        // Off hours: notify manager via Telegram
-        const hour = getTashkentHour();
-        const timeStr = hour < 9 ? 'утро (9:00+)' : 'завтра утром';
-        
-        if (MANAGER_CHAT_ID && userInfo) {
-          await bot.sendMessage(MANAGER_CHAT_ID,
-            `🌙 ЗАПРОС ВНЕ РАБОЧЕГО ВРЕМЕНИ\n━━━━━━━━━━━━━━━\n👤 Клиент: ${userInfo.name || '—'}\n📱 Номер: ${userInfo.phone || '—'}\n🔗 Telegram: @${msg.from.username || '—'} (id: ${userId})\n━━━━━━━━━━━━━━━\n💬 Запрос: Хочет заказ/консультацию\n⏰ Позвонить: ${timeStr}\n🕐 ${new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' })}`
-          ).catch(e => console.error('Error sending to manager:', e.message));
-        }
-        
-        await bot.sendMessage(chatId,
-          `✅ Спасибо за интерес!\n\nВы написали вне рабочего времени. Мы обработаем ваш запрос завтра утром с 9:00.\n\nНаш номер: *${COMPANY.phone}*`,
-          { parse_mode: 'Markdown' }
-        );
-      }
-    }
+
+    const contactKeyboard = {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '📞 Позвонить', url: `tel:${COMPANY.phone.replace(/\s/g, '')}` },
+            { text: '📝 Оставить заявку', callback_data: 'request_general' },
+          ],
+          [{ text: '🏠 Главное меню', callback_data: 'main_menu' }],
+        ],
+      },
+    };
+
+    await bot.sendMessage(chatId, botResponse, { parse_mode: 'Markdown', ...contactKeyboard });
     return;
   }
 
