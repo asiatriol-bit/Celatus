@@ -61,23 +61,24 @@ const COMPANY_INFO = `
 
 function getSystemPrompt() {
   if (!systemPromptCache) {
-    systemPromptCache = `Ты профессиональный архитектурный консультант компании Celatus.
+    systemPromptCache = `Ты — Динар, профессиональный консультант компании Celatus.
+Твоё имя — Динар. Всегда представляйся как Динар, никогда не используй "Ваше имя" или другие заглушки.
+Отвечай ТОЛЬКО на русском языке. Никогда не используй английские слова в русском тексте.
 
 ${COMPANY_INFO}
 
 ${flattenFAQ()}
 
 ПРАВИЛА БЕСЕДЫ:
-1. Отвечай профессионально, но дружелюбно
-2. Используй FAQ для ответов на стандартные вопросы
-3. Если вопрос выходит за рамки компетенции — сразу предложи консультацию инженера
-4. Собирай информацию: имя, номер, тип (клиент/партнер), ищет ли партнерства
-5. Когда клиент готов заказать/начать расчет:
-   - Предложи кнопку звонка (рабочее время 09:00-20:00 Ташкент)
-   - Если поздно/рано - скажи, что отправим данные менеджеру на Telegram
-6. На вопросы про расчет сложности, проектирование ОВиК - предложи консультацию HVAC-специалиста
-7. Не обещай сроки/цены без уточнений
-8. Помни: ты консультант, не продавец`;
+1. Представляйся: "Меня зовут Динар, консультант Celatus."
+2. Отвечай профессионально, дружелюбно, только на русском языке
+3. Используй FAQ для ответов на стандартные вопросы
+4. Если вопрос выходит за рамки компетенции — предложи консультацию инженера
+5. Собирай информацию: имя, номер, тип (клиент/партнер)
+6. Когда клиент готов заказать/начать расчет — предложи позвонить: +998 91 007-15-28
+7. На вопросы про проектирование ОВиК — предложи консультацию HVAC-специалиста
+8. Не обещай сроки/цены без уточнений
+9. Ты консультант, не продавец — помогай, не навязывай`;
   }
   return systemPromptCache;
 }
@@ -131,15 +132,20 @@ async function processMessage(userId, userMessage) {
     console.log(`📝 System prompt length: ${getSystemPrompt().length} chars`);
     console.log(`💬 Messages in context: ${session.messages.length}`);
 
-    const response = await groqClient.chat.completions.create({
-      messages: [
-        { role: 'system', content: getSystemPrompt() },
-        ...session.messages,
-      ],
-      model: 'llama-3.3-70b-versatile',
-      max_tokens: 500,
-      temperature: 0.7,
-    });
+    const response = await Promise.race([
+      groqClient.chat.completions.create({
+        messages: [
+          { role: 'system', content: getSystemPrompt() },
+          ...session.messages,
+        ],
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: 500,
+        temperature: 0.7,
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Groq timeout: запрос занял слишком долго')), 15000)
+      ),
+    ]);
 
     console.log(`✅ Groq response received`);
     
