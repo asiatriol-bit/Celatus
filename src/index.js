@@ -9,6 +9,9 @@ const PORT = process.env.PORT || 3000;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MANAGER_CHAT_ID = process.env.MANAGER_CHAT_ID;
+// Заявки дублируются лидом в «Прорыв» (функция lead-intake в Supabase). Без этих переменных — только Telegram менеджеру.
+const PRORYV_INTAKE_URL = process.env.PRORYV_INTAKE_URL;
+const PRORYV_INTAKE_SECRET = process.env.PRORYV_INTAKE_SECRET;
 
 if (!TOKEN) { console.error('❌ Укажите TELEGRAM_BOT_TOKEN'); process.exit(1); }
 
@@ -17,6 +20,24 @@ const { COMPANY, PRODUCTS, FAQ, QUALIFICATION, getRecommendation } = require('./
 const kb = require('./keyboards');
 
 const sessions = new Map();
+// Метка из ссылки t.me/celatusuzbot?start=<метка> (google_ru, ig_..., p_<партнёр>, site).
+// Хранится отдельно от сессии: «Подбор» и «Главное меню» сбрасывают сессию, а источник должен дожить до заявки.
+const startTags = new Map();
+
+async function sendToProryv(lead) {
+  if (!PRORYV_INTAKE_URL || !PRORYV_INTAKE_SECRET) return;
+  try {
+    const r = await fetch(PRORYV_INTAKE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-intake-secret': PRORYV_INTAKE_SECRET },
+      body: JSON.stringify(lead),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) console.error('Прорыв: лид не записан', r.status, await r.text());
+  } catch (e) {
+    console.error('Прорыв: ошибка отправки лида', e.message);
+  }
+}
 
 function esc(text) { return String(text).replace(/([_*\[\]()~`>#+=|{}.!-])/g, '\\$1'); }
 function getSession(id) { if (!sessions.has(id)) sessions.set(id, {}); return sessions.get(id); }
@@ -96,8 +117,10 @@ async function handleMessage(msg) {
     return;
   }
 
-  if (text === '/start') {
+  if (text === '/start' || text.startsWith('/start ')) {
     sessions.delete(userId);
+    const tag = text.slice(7).trim();
+    if (tag) startTags.set(userId, tag);
     const name = msg.from.first_name || 'Привет';
     const coverPath = path.join(__dirname, '..', 'images', 'cover.jpeg');
     if (fs.existsSync(coverPath)) {
@@ -120,6 +143,7 @@ async function handleMessage(msg) {
     const roleLabel = session.role ? labelFor(QUALIFICATION.roles, session.role) : '—';
     const projectLabel = session.projectType ? labelFor(QUALIFICATION.projectTypes, session.projectType) : '—';
     const lengthLabel = session.length ? labelFor(QUALIFICATION.lengths, session.length) : '—';
+    const tag = startTags.get(userId) || '';
 
     await bot.sendMessage(chatId,
       `✅ *Заявка принята!*\n\nИмя: *${esc(session.name)}*\nТелефон: *${esc(session.phone)}*\n\nМенеджер свяжется с вами в ближайшее время.\nОбычно отвечаем за 15–30 минут в рабочее время.`,
@@ -128,9 +152,13 @@ async function handleMessage(msg) {
 
     if (MANAGER_CHAT_ID) {
       await bot.sendMessage(MANAGER_CHAT_ID,
-        `🔔 НОВАЯ ЗАЯВКА — CELATUS\n━━━━━━━━━━━━━━━\n👤 Имя: ${session.name}\n📱 Телефон: ${session.phone}\n🆔 Telegram: @${msg.from.username || '—'} (id: ${userId})\n━━━━━━━━━━━━━━━\n📐 Продукт: ${product.name}\n🎨 Роль: ${roleLabel}\n🏗 Объект: ${projectLabel}\n📏 Длина: ${lengthLabel}\n━━━━━━━━━━━━━━━\n🕐 ${new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' })}`
+        `🔔 НОВАЯ ЗАЯВКА — CELATUS\n━━━━━━━━━━━━━━━\n👤 Имя: ${session.name}\n📱 Телефон: ${session.phone}\n🆔 Telegram: @${msg.from.username || '—'} (id: ${userId})\n━━━━━━━━━━━━━━━\n📐 Продукт: ${product.name}\n🎨 Роль: ${roleLabel}\n🏗 Объект: ${projectLabel}\n📏 Длина: ${lengthLabel}\n📍 Источник: ${tag || 'без метки'}\n━━━━━━━━━━━━━━━\n🕐 ${new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' })}`
       ).catch(e => console.error('Ошибка отправки менеджеру:', e.message));
     }
+    await sendToProryv({
+      name: session.name, phone: session.phone, tgUsername: msg.from.username || '', tgId: userId,
+      start: tag, product: product.name, role: roleLabel, project: projectLabel, length: lengthLabel,
+    });
     sessions.delete(userId);
     return;
   }
