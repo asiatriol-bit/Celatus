@@ -284,7 +284,7 @@ const webhookTarget = WEBHOOK_URL ? `${WEBHOOK_URL}${WEBHOOK_PATH}` : null;
 function setWebhook() {
   if (!webhookTarget) return;
   bot.setWebhook(webhookTarget)
-    .then(() => console.log(`✅ Webhook set: ${webhookTarget}`))
+    .then(() => console.log(`✅ Webhook set: ${WEBHOOK_URL}/bot***`))   // токен бота в журнал не пишем
     .catch(e => console.error('❌ Webhook error:', e.message));
 }
 
