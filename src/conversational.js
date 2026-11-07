@@ -4,6 +4,10 @@ const faqData = require('./faq.json');
 let client = null;
 let systemPromptCache = null;
 
+// Groq снимает модели с поддержки (llama-3.3-70b-versatile отключена 16.08.2026).
+// Модель задаётся в Render переменной GROQ_MODEL, чтобы менять её без нового деплоя.
+const MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+
 function initializeClient() {
   if (!client && process.env.GROQ_API_KEY) {
     try {
@@ -128,7 +132,7 @@ async function processMessage(userId, userMessage) {
   });
 
   try {
-    console.log(`📤 Sending request to Groq with model: llama-3.3-70b-versatile`);
+    console.log(`📤 Sending request to Groq with model: ${MODEL}`);
     console.log(`📝 System prompt length: ${getSystemPrompt().length} chars`);
     console.log(`💬 Messages in context: ${session.messages.length}`);
 
@@ -138,8 +142,10 @@ async function processMessage(userId, userMessage) {
           { role: 'system', content: getSystemPrompt() },
           ...session.messages,
         ],
-        model: 'llama-3.3-70b-versatile',
-        max_tokens: 500,
+        model: MODEL,
+        // gpt-oss сначала рассуждает, и рассуждение входит в лимит токенов — отсюда запас.
+        reasoning_effort: 'low',
+        max_tokens: 2000,
         temperature: 0.7,
       }),
       new Promise((_, reject) =>
@@ -149,7 +155,8 @@ async function processMessage(userId, userMessage) {
 
     console.log(`✅ Groq response received`);
     
-    const assistantMessage = response.choices[0].message.content;
+    const assistantMessage = (response.choices[0].message.content || '').trim();
+    if (!assistantMessage) throw new Error('Groq вернул пустой ответ');
     console.log(`📥 Response: ${assistantMessage.substring(0, 100)}...`);
     
     session.messages.push({
@@ -175,7 +182,7 @@ async function processMessage(userId, userMessage) {
     console.error('Full error:', error);
     
     return {
-      message: `❌ Ошибка Groq: ${error.message}. Позвоните нам: +998 91 007-15-28`,
+      message: 'Не получилось ответить на вопрос прямо сейчас. Напишите менеджеру или позвоните: +998 91 007-15-28',
       session: session.userInfo,
     };
   }
